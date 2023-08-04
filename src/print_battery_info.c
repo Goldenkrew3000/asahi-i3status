@@ -44,6 +44,9 @@
 #include <sys/envsys.h>
 #endif
 
+int asahi_bat_remaining = 0;
+int asahi_bat_charge = 0;
+
 typedef enum {
     CS_UNKNOWN,
     CS_DISCHARGING,
@@ -183,13 +186,18 @@ static bool slurp_battery_info(battery_info_ctx_t *ctx, struct battery_info *bat
             batt_info->present_rate = abs(atoi(walk + 1));
         else if (BEGINS_WITH(last, "POWER_SUPPLY_VOLTAGE_NOW="))
             voltage = abs(atoi(walk + 1));
-        else if (BEGINS_WITH(last, "POWER_SUPPLY_TIME_TO_EMPTY_NOW="))
-            batt_info->seconds_remaining = abs(atoi(walk + 1)) * 60;
+        else if (BEGINS_WITH(last, "POWER_SUPPLY_TIME_TO_EMPTY_NOW=")) {
+            // (Asahi) Asahi reports POWER_SUPPLY_TIME_TO_EMPTY_NOW as seconds.
+            batt_info->seconds_remaining = abs(atoi(walk + 1));
+            asahi_bat_remaining = batt_info->seconds_remaining;
         /* on some systems POWER_SUPPLY_POWER_NOW does not exist, but actually
          * it is the same as POWER_SUPPLY_CURRENT_NOW but with μWh as
          * unit instead of μAh. We will calculate it as we need it
          * later. */
-        else if (BEGINS_WITH(last, "POWER_SUPPLY_POWER_NOW="))
+        } else if (BEGINS_WITH(last, "POWER_SUPPLY_TIME_TO_FULL_NOW=") {
+            // (Asahi) Asahi reports POWER_SUPPLY_TIME_TO_FULL_NOW as time until full, also in seconds.
+            asahi_bat_charge = abs(atoi(walk + 1));
+        } else if (BEGINS_WITH(last, "POWER_SUPPLY_POWER_NOW="))
             batt_info->present_rate = abs(atoi(walk + 1));
         else if (BEGINS_WITH(last, "POWER_SUPPLY_STATUS=Charging"))
             batt_info->status = CS_CHARGING;
@@ -539,10 +547,7 @@ static bool slurp_all_batteries(battery_info_ctx_t *ctx, struct battery_info *ba
         strcpy(globplaceholder + 1, placeholder + 2);
     }
 
-    if (!strcmp(globpath, path)) {
-        OUTPUT_FULL_TEXT("no '%d' in battery path");
-        return false;
-    }
+    // (Asahi) Removed: Checks for battery ID in path, but Asahi uses macsmc-battery as the id.
 
     glob_t globbuf;
     if (glob(globpath, 0, NULL, &globbuf) == 0) {
@@ -649,9 +654,13 @@ void print_battery_info(battery_info_ctx_t *ctx) {
 
     if (batt_info.seconds_remaining < 0 && batt_info.present_rate > 0 && batt_info.status != CS_FULL) {
         if (batt_info.status == CS_CHARGING)
-            batt_info.seconds_remaining = 3600.0 * (full - batt_info.remaining) / batt_info.present_rate;
+            // (Asahi) Replace time until charged with new value obtained above
+            batt_info.seconds_remaining = asahi_bat_charge;
+            //batt_info.seconds_remaining = 3600.0 * (full - batt_info.remaining) / batt_info.present_rate;
         else if (batt_info.status == CS_DISCHARGING)
-            batt_info.seconds_remaining = 3600.0 * batt_info.remaining / batt_info.present_rate;
+            // (Asahi) Replace time until empty with new value obtained above
+            batt_info.seconds_remaining = asahi_bat_remaining;
+            //batt_info.seconds_remaining = 3600.0 * batt_info.remaining / batt_info.present_rate;
         else
             batt_info.seconds_remaining = 0;
     }

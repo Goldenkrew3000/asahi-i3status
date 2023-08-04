@@ -1,5 +1,9 @@
 # i3status
 
+## What's different in this fork?
+The battery monitoring in stock i3status does not work corrently under Asahi Linux.
+This fork both allows i3status to get the battery percentage, time remaining on battery and time until charged.
+
 ## Description
 
 i3status is a small program for generating a status bar for i3bar, dzen2, xmobar
